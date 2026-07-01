@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #FFFFFF;
+  --color-red-500: #E53935;
+  
+  --color-surface-0: #FFFFFF; /* Main app bg */
+  --color-surface-1: #FFFFFF; /* Panels, Sidebar */
+  --color-surface-2: #F9FAFB; /* Headers, active elements */
+  --color-surface-3: #F3F4F6; /* Borders, inputs */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.12);
+  --color-text-primary: #111827;
+  --color-text-secondary: #4B5563;
+  --color-text-muted: #9CA3AF;
+  
+  /* Brand Colors */
+  --color-brand: #C8001A;
+  --color-brand-hover: #a00015;
+  --color-brand-subtle: rgba(200, 0, 26, 0.08);
+  
+  /* Standardized Badge Colors */
+  --color-badge-string: #8A2BE2;
+  --color-badge-hash: #0070B0;
+  --color-badge-list: #00A859;
+  --color-badge-set: #D2691E;
+  --color-badge-zset: #D97706;
+  --color-badge-none: #71717A;
+}
+
+@layer base {
+  :root {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    color: var(--color-text-primary);
+    background-color: var(--color-surface-0);
+  }
+  
+  body {
+    @apply m-0 overflow-hidden text-[13px];
+  }
+
+  /* Sleek modern scrollbars globally */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
+}
+
+@layer utilities {
+  .slick-border {
+    border: 0.5px solid var(--color-border);
+  }
+  .slick-border-strong {
+    border: 0.5px solid var(--color-border-strong);
+  }
+  .slick-border-b {
+    border-bottom: 0.5px solid var(--color-border);
+  }
+  .slick-border-t {
+    border-top: 0.5px solid var(--color-border);
+  }
+  .slick-border-r {
+    border-right: 0.5px solid var(--color-border);
+  }
+  .animate-in {
+    animation: dialog-in 0.15s ease-out;
+  }
+  @keyframes dialog-in {
+    from { opacity: 0; transform: scale(0.96) translateY(4px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0); }
+  }
+}

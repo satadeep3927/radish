@@ -1,0 +1,5 @@
+allowBuilds:
+  esbuild: false
+minimumReleaseAgeExclude:
+  - lucide-solid@1.22.0
+  - postcss@8.5.16

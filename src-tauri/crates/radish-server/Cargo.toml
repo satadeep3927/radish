@@ -1,0 +1,21 @@
+[package]
+name = "radish-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bytes = "1.12.0"
+im = "15.1.0"
+radish-proto = { version = "0.1.0", path = "../radish-proto" }
+radish-storage = { version = "0.1.0", path = "../radish-storage" }
+tokio = { version = "1.52.3", features = ["full"] }
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["async_tokio"] }
+
+[[bench]]
+name = "engine_bench"
+harness = false
