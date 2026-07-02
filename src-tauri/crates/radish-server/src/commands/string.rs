@@ -40,15 +40,139 @@ pub fn handle(cmd: &str, frames: &[Frame], db: &mut Keyspace) -> Frame {
             }
         }
         "SET" => {
-            if frames.len() != 3 {
+            if frames.len() < 3 {
                 Frame::Error("ERR wrong number of arguments for 'set' command".to_string())
-            } else {
-                if let (Some(k), Some(v)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
-                    db.set(k, Value::String(v));
-                    Frame::Simple("OK".to_string())
-                } else {
-                    Frame::Error("ERR invalid arguments".to_string())
+            } else if let (Some(k), Some(v)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                let mut expire = None;
+                let mut nx = false;
+                let mut xx = false;
+                let mut keepttl = false;
+                let mut get = false;
+                let mut syntax_error = false;
+                let mut type_error = false;
+
+                let mut i = 3;
+                while i < frames.len() {
+                    if let Some(arg) = extract_bytes(&frames[i]) {
+                        let arg_str = String::from_utf8_lossy(&arg).to_uppercase();
+                        match arg_str.as_str() {
+                            "NX" => { nx = true; }
+                            "XX" => { xx = true; }
+                            "KEEPTTL" => { keepttl = true; }
+                            "GET" => { get = true; }
+                            "EX" => {
+                                if i + 1 >= frames.len() { syntax_error = true; break; }
+                                if let Some(val_b) = extract_bytes(&frames[i+1]) {
+                                    if let Ok(sec) = String::from_utf8_lossy(&val_b).parse::<u64>() {
+                                        expire = Some(radish_storage::keyspace::now_ms() + sec * 1000);
+                                    } else { type_error = true; break; }
+                                } else { syntax_error = true; break; }
+                                i += 1;
+                            }
+                            "PX" => {
+                                if i + 1 >= frames.len() { syntax_error = true; break; }
+                                if let Some(val_b) = extract_bytes(&frames[i+1]) {
+                                    if let Ok(ms) = String::from_utf8_lossy(&val_b).parse::<u64>() {
+                                        expire = Some(radish_storage::keyspace::now_ms() + ms);
+                                    } else { type_error = true; break; }
+                                } else { syntax_error = true; break; }
+                                i += 1;
+                            }
+                            "EXAT" => {
+                                if i + 1 >= frames.len() { syntax_error = true; break; }
+                                if let Some(val_b) = extract_bytes(&frames[i+1]) {
+                                    if let Ok(sec) = String::from_utf8_lossy(&val_b).parse::<u64>() {
+                                        expire = Some(sec * 1000);
+                                    } else { type_error = true; break; }
+                                } else { syntax_error = true; break; }
+                                i += 1;
+                            }
+                            "PXAT" => {
+                                if i + 1 >= frames.len() { syntax_error = true; break; }
+                                if let Some(val_b) = extract_bytes(&frames[i+1]) {
+                                    if let Ok(ms) = String::from_utf8_lossy(&val_b).parse::<u64>() {
+                                        expire = Some(ms);
+                                    } else { type_error = true; break; }
+                                } else { syntax_error = true; break; }
+                                i += 1;
+                            }
+                            _ => { syntax_error = true; break; }
+                        }
+                    } else {
+                        syntax_error = true; break;
+                    }
+                    i += 1;
                 }
+
+                if syntax_error {
+                    Frame::Error("ERR syntax error".to_string())
+                } else if type_error {
+                    Frame::Error("ERR value is not an integer or out of range".to_string())
+                } else if nx && xx {
+                    Frame::Error("ERR syntax error".to_string())
+                } else {
+                    let exists = db.get(&k).is_some();
+                    if (nx && exists) || (xx && !exists) {
+                        Frame::Null
+                    } else {
+                        let old_val = if get {
+                            match db.get(&k) {
+                                Some(Value::String(val)) => Frame::Bulk(val.clone()),
+                                Some(_) => return Frame::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                                None => Frame::Null,
+                            }
+                        } else {
+                            Frame::Null
+                        };
+
+                        let retained_ttl = if keepttl { db.get_deadline(&k) } else { None };
+
+                        db.set(k.clone(), Value::String(v));
+
+                        if let Some(deadline) = expire {
+                            db.set_ttl(&k, deadline);
+                        } else if let Some(deadline) = retained_ttl {
+                            db.set_ttl(&k, deadline);
+                        }
+
+                        if get {
+                            old_val
+                        } else {
+                            Frame::Simple("OK".to_string())
+                        }
+                    }
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "SETNX" => {
+            if frames.len() != 3 {
+                Frame::Error("ERR wrong number of arguments for 'setnx' command".to_string())
+            } else if let (Some(k), Some(v)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                if db.get(&k).is_none() {
+                    db.set(k, Value::String(v));
+                    Frame::Integer(1)
+                } else {
+                    Frame::Integer(0)
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "GETSET" => {
+            if frames.len() != 3 {
+                Frame::Error("ERR wrong number of arguments for 'getset' command".to_string())
+            } else if let (Some(k), Some(v)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                let old_val = match db.get(&k) {
+                    Some(Value::String(val)) => Frame::Bulk(val.clone()),
+                    Some(_) => return Frame::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string()),
+                    None => Frame::Null,
+                };
+                db.set(k, Value::String(v));
+                old_val
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
             }
         }
         "SETEX" => {

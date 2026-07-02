@@ -20,11 +20,14 @@ pub async fn start(config: RadishConfig, mut cancel_rx: tokio::sync::oneshot::Re
 
     // 1. Create the communication channel between connections and the engine
     let (tx, rx) = mpsc::channel(1024);
+    
+    // 1.5 Create a channel for the engine to signal the listener that it has shut down
+    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
 
     // 2. Spawn the single-threaded Execution Engine task
     let engine_config = config.clone();
     tokio::spawn(async move {
-        run(rx, engine_config).await;
+        run(rx, engine_config, shutdown_tx).await;
     });
 
     let addr = format!("{}:{}", config.bind, config.port);
@@ -41,12 +44,19 @@ pub async fn start(config: RadishConfig, mut cancel_rx: tokio::sync::oneshot::Re
     loop {
         tokio::select! {
             _ = &mut cancel_rx => {
-                log::info!("Shutdown signal received, stopping listener loop...");
+                log::info!("Shutdown signal received via CLI, stopping listener loop...");
+                break;
+            }
+            _ = shutdown_rx.recv() => {
+                log::info!("Engine executed SHUTDOWN command, stopping listener loop...");
                 break;
             }
             accept_res = listener.accept() => {
                 match accept_res {
                     Ok((stream, _addr)) => {
+                        // Disable Nagle's algorithm to drastically reduce latency for unpipelined requests
+                        let _ = stream.set_nodelay(true);
+                        
                         let tx = tx.clone();
                         let conn_id = conn_counter.fetch_add(1, Ordering::SeqCst);
                         

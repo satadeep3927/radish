@@ -22,7 +22,7 @@ pub enum EngineMessage {
     }
 }
 
-pub async fn run(mut receiver: mpsc::Receiver<EngineMessage>, config: crate::config::RadishConfig) {
+pub async fn run(mut receiver: mpsc::Receiver<EngineMessage>, config: crate::config::RadishConfig, shutdown_notify: mpsc::Sender<()>) {
     let start_time = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
     let dump_path = config.get_resolved_dump_path().to_string_lossy().to_string();
     let mut db = Keyspace::load_from_disk(&dump_path).unwrap_or_else(|_| Keyspace::new());
@@ -110,7 +110,7 @@ pub async fn run(mut receiver: mpsc::Receiver<EngineMessage>, config: crate::con
                                     )
                                 }
                                 "PING" | "HELLO" => commands::connection::handle(cmd_name.as_str(), &frames),
-                                "SET" | "GET" | "MSET" | "MGET" | "SETEX" | "INCR" | "DECR" | "GETRANGE" => {
+                                "SET" | "GET" | "MSET" | "MGET" | "SETEX" | "INCR" | "DECR" | "GETRANGE" | "SETNX" | "GETSET" => {
                                     commands::string::handle(cmd_name.as_str(), &frames, &mut db)
                                 }
                                 "HSET" | "HGET" | "HGETALL" | "HDEL" | "HEXISTS" | "HLEN" | "HSCAN" => {
@@ -122,7 +122,7 @@ pub async fn run(mut receiver: mpsc::Receiver<EngineMessage>, config: crate::con
                                 "SADD" | "SMEMBERS" | "SREM" | "SISMEMBER" | "SCARD" | "SSCAN" => {
                                     commands::set::handle(cmd_name.as_str(), &frames, &mut db)
                                 }
-                                "KEYS" | "SCAN" | "FLUSHDB" | "FLUSHALL" | "DEL" | "EXISTS" | "TTL" | "EXPIRE" | "RENAME" | "TYPE" | "MEMORY" => {
+                                "KEYS" | "SCAN" | "FLUSHDB" | "FLUSHALL" | "DEL" | "EXISTS" | "TTL" | "EXPIRE" | "RENAME" | "TYPE" | "MEMORY" | "PEXPIRE" | "EXPIREAT" | "PEXPIREAT" | "PERSIST" | "PTTL" | "OBJECT" => {
                                     commands::generic::handle(cmd_name.as_str(), &frames, &mut db, &config)
                                 }
                                 "SHUTDOWN" => {
@@ -160,6 +160,7 @@ pub async fn run(mut receiver: mpsc::Receiver<EngineMessage>, config: crate::con
 
                 let _ = responder.send(response).await;
                 if should_shutdown {
+                    let _ = shutdown_notify.send(()).await;
                     break;
                 }
             }

@@ -121,6 +121,123 @@ pub fn handle(cmd: &str, frames: &[Frame], db: &mut Keyspace, config: &RadishCon
                 Frame::Error("ERR invalid arguments".to_string())
             }
         }
+        "PTTL" => {
+            if frames.len() != 2 {
+                Frame::Error("ERR wrong number of arguments for 'pttl' command".to_string())
+            } else if let Some(k) = extract_bytes(&frames[1]) {
+                if db.get(&k).is_none() {
+                    Frame::Integer(-2) // Key does not exist
+                } else if let Some(ms) = db.get_ttl(&k) {
+                    Frame::Integer(ms as i64)
+                } else {
+                    Frame::Integer(-1) // Key exists but has no TTL
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "PEXPIRE" => {
+            if frames.len() != 3 {
+                Frame::Error("ERR wrong number of arguments for 'pexpire' command".to_string())
+            } else if let (Some(k), Some(ms_b)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                let ms_str = String::from_utf8_lossy(&ms_b);
+                if let Ok(ms) = ms_str.parse::<u64>() {
+                    let deadline = radish_storage::keyspace::now_ms() + ms;
+                    if db.set_ttl(&k, deadline) {
+                        Frame::Integer(1)
+                    } else {
+                        Frame::Integer(0)
+                    }
+                } else {
+                    Frame::Error("ERR value is not an integer or out of range".to_string())
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "EXPIREAT" => {
+            if frames.len() != 3 {
+                Frame::Error("ERR wrong number of arguments for 'expireat' command".to_string())
+            } else if let (Some(k), Some(sec_b)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                let sec_str = String::from_utf8_lossy(&sec_b);
+                if let Ok(sec) = sec_str.parse::<u64>() {
+                    let deadline = sec * 1000;
+                    if db.set_ttl(&k, deadline) {
+                        Frame::Integer(1)
+                    } else {
+                        Frame::Integer(0)
+                    }
+                } else {
+                    Frame::Error("ERR value is not an integer or out of range".to_string())
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "PEXPIREAT" => {
+            if frames.len() != 3 {
+                Frame::Error("ERR wrong number of arguments for 'pexpireat' command".to_string())
+            } else if let (Some(k), Some(ms_b)) = (extract_bytes(&frames[1]), extract_bytes(&frames[2])) {
+                let ms_str = String::from_utf8_lossy(&ms_b);
+                if let Ok(ms) = ms_str.parse::<u64>() {
+                    let deadline = ms;
+                    if db.set_ttl(&k, deadline) {
+                        Frame::Integer(1)
+                    } else {
+                        Frame::Integer(0)
+                    }
+                } else {
+                    Frame::Error("ERR value is not an integer or out of range".to_string())
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "PERSIST" => {
+            if frames.len() != 2 {
+                Frame::Error("ERR wrong number of arguments for 'persist' command".to_string())
+            } else if let Some(k) = extract_bytes(&frames[1]) {
+                if db.persist(&k) {
+                    Frame::Integer(1)
+                } else {
+                    Frame::Integer(0)
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
+        "OBJECT" => {
+            if frames.len() < 2 {
+                Frame::Error("ERR wrong number of arguments for 'object' command".to_string())
+            } else if let Some(subcmd) = extract_bytes(&frames[1]) {
+                let subcmd_str = String::from_utf8_lossy(&subcmd).to_uppercase();
+                match subcmd_str.as_str() {
+                    "ENCODING" => {
+                        if frames.len() != 3 {
+                            Frame::Error("ERR wrong number of arguments for 'object encoding' command".to_string())
+                        } else if let Some(k) = extract_bytes(&frames[2]) {
+                            match db.get(&k) {
+                                Some(val) => {
+                                    let enc = match val {
+                                        radish_storage::value::Value::String(_) => "raw",
+                                        radish_storage::value::Value::List(_) => "quicklist",
+                                        radish_storage::value::Value::Set(_) => "hashtable",
+                                        radish_storage::value::Value::Hash(_) => "hashtable",
+                                    };
+                                    Frame::Bulk(bytes::Bytes::from(enc))
+                                }
+                                None => Frame::Null,
+                            }
+                        } else {
+                            Frame::Error("ERR invalid arguments".to_string())
+                        }
+                    }
+                    _ => Frame::Error(format!("ERR unknown subcommand '{}'", subcmd_str)),
+                }
+            } else {
+                Frame::Error("ERR invalid arguments".to_string())
+            }
+        }
         "RENAME" => {
             if frames.len() != 3 {
                 Frame::Error("ERR wrong number of arguments for 'rename' command".to_string())

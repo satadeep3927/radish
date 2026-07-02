@@ -246,3 +246,52 @@ async fn test_engine_acl() {
     let resp = send_cmd(&tx, vec!["ACL", "SETUSER", "alice", ">secret"]).await;
     assert_eq!(resp, Frame::Simple("OK".to_string()));
 }
+
+#[tokio::test]
+async fn test_engine_new_commands_02() {
+    let (tx, rx) = mpsc::channel(10);
+    run_test_engine(rx, "new_cmds_02");
+    auth(&tx).await;
+
+    // Test SETNX
+    let resp = send_cmd(&tx, vec!["SETNX", "nxkey", "val1"]).await;
+    assert_eq!(resp, Frame::Integer(1));
+    let resp = send_cmd(&tx, vec!["SETNX", "nxkey", "val2"]).await;
+    assert_eq!(resp, Frame::Integer(0));
+
+    // Test GETSET
+    let resp = send_cmd(&tx, vec!["GETSET", "gskey", "val1"]).await;
+    assert_eq!(resp, Frame::Null);
+    let resp = send_cmd(&tx, vec!["GETSET", "gskey", "val2"]).await;
+    assert_eq!(resp, Frame::Bulk(Bytes::from("val1")));
+    let resp = send_cmd(&tx, vec!["GET", "gskey"]).await;
+    assert_eq!(resp, Frame::Bulk(Bytes::from("val2")));
+
+    // Test SET with options (NX, XX, EX, GET)
+    let resp = send_cmd(&tx, vec!["SET", "setkey", "val", "NX", "GET"]).await;
+    assert_eq!(resp, Frame::Null); // Returns null because it didn't exist before GETting
+    let resp = send_cmd(&tx, vec!["SET", "setkey", "val_new", "XX", "GET"]).await;
+    assert_eq!(resp, Frame::Bulk(Bytes::from("val"))); // Returns old val
+    let resp = send_cmd(&tx, vec!["SET", "setkey", "val_newest", "NX"]).await;
+    assert_eq!(resp, Frame::Null); // Fails condition
+
+    // Test PEXPIRE / PERSIST
+    send_cmd(&tx, vec!["SET", "expkey", "val"]).await;
+    let resp = send_cmd(&tx, vec!["PEXPIRE", "expkey", "5000"]).await;
+    assert_eq!(resp, Frame::Integer(1));
+    let resp = send_cmd(&tx, vec!["PTTL", "expkey"]).await;
+    if let Frame::Integer(val) = resp {
+        assert!(val > 0 && val <= 5000);
+    } else {
+        panic!("PTTL did not return integer");
+    }
+    let resp = send_cmd(&tx, vec!["PERSIST", "expkey"]).await;
+    assert_eq!(resp, Frame::Integer(1));
+    let resp = send_cmd(&tx, vec!["TTL", "expkey"]).await;
+    assert_eq!(resp, Frame::Integer(-1)); // No TTL anymore
+
+    // Test OBJECT ENCODING
+    let resp = send_cmd(&tx, vec!["OBJECT", "ENCODING", "expkey"]).await;
+    assert_eq!(resp, Frame::Bulk(Bytes::from("raw")));
+}
+

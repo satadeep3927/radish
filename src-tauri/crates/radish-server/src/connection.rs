@@ -11,6 +11,7 @@ pub struct Connection {
     id: u64,
     stream: TcpStream,
     buffer: BytesMut,
+    out_buf: BytesMut,
 }
 
 impl Connection {
@@ -19,6 +20,7 @@ impl Connection {
             id,
             stream,
             buffer: BytesMut::with_capacity(4096),
+            out_buf: BytesMut::with_capacity(4096),
         }
     }
 
@@ -62,10 +64,18 @@ impl Connection {
                 response_opt = resp_rx.recv() => {
                     match response_opt {
                         Some(response) => {
-                            let mut out_buf = BytesMut::new();
-                            response.serialize(&mut out_buf);
+                            self.out_buf.clear();
+                            response.serialize(&mut self.out_buf);
                             
-                            if let Err(e) = self.stream.write_all(&out_buf).await {
+                            // Auto-pipeline: drain pending responses to minimize syscalls
+                            while let Ok(next_resp) = resp_rx.try_recv() {
+                                next_resp.serialize(&mut self.out_buf);
+                                if self.out_buf.len() > 65536 {
+                                    break; // Prevent starvation/buffer bloat
+                                }
+                            }
+                            
+                            if let Err(e) = self.stream.write_all(&self.out_buf).await {
                                 eprintln!("Failed to write to client: {}", e);
                                 break;
                             }
@@ -85,15 +95,13 @@ impl Connection {
 
     /// Reads more bytes from the TCP socket into the buffer.
     async fn read_frame_or_wait(&mut self) -> Result<(), String> {
-        let mut temp_buf = [0u8; 4096];
-        let n = self.stream.read(&mut temp_buf).await.map_err(|e| e.to_string())?;
+        let n = self.stream.read_buf(&mut self.buffer).await.map_err(|e| e.to_string())?;
         
         if n == 0 {
             // Connection closed by peer
             return Err("".to_string());
         }
         
-        self.buffer.extend_from_slice(&temp_buf[0..n]);
         Ok(())
     }
 

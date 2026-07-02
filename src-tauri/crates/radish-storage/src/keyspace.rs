@@ -109,6 +109,29 @@ impl Keyspace {
         }
     }
 
+    /// Get the raw expiration deadline in UNIX milliseconds for a given key.
+    /// Returns None if the key has no TTL or does not exist.
+    pub fn get_deadline(&self, key: &[u8]) -> Option<u64> {
+        self.expires.get(key).copied()
+    }
+
+    /// Remove any TTL associated with a key.
+    /// Returns true if the key exists and had a TTL that was removed, false otherwise.
+    pub fn persist(&mut self, key: &[u8]) -> bool {
+        // If the key has expired, lazily delete it and return false
+        if let Some(&deadline) = self.expires.get(key) {
+            if now_ms() >= deadline {
+                self.del(key);
+                return false;
+            }
+            self.expires.remove(key);
+            self.cached_size.store(usize::MAX, Ordering::Release);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Rename a key. Returns true if the old key existed and was renamed.
     pub fn rename(&mut self, old_key: &[u8], new_key: &[u8]) -> bool {
         // If the key has expired, treat it as non-existent
