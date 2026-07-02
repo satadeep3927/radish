@@ -22,15 +22,22 @@
 ---
 
 ## Performance Benchmarks
-Radish uses a multi-threaded, lockless-reader architecture (`RwLock<im::HashMap>`) that allows it to scale vertically across multiple CPU cores. 
+Radish utilizes a multi-threaded, concurrent shared-reader architecture (`RwLock<im::HashMap>`) designed to scale across available CPU cores.
 
-**Environment:** Windows Loopback (TCP)
-**Command:** `./redis-benchmark -h 127.0.0.1 -p 6379 -c 100 -t set,get -n 1000000 -q -P 200`
+**Environment:**
+- **Hardware:** Intel Core i3-12100 (4 Cores, 8 Threads), 16GB RAM
+- **OS:** Windows 11
+- **Network:** Windows TCP Loopback
+- **Benchmark Tool:** `redis-benchmark -h 127.0.0.1 -p 6379 -c 100 -t set,get -n 1000000 -q -P 200`
 
-- **GET (Reads):** ~2,500,000 requests per second (Concurrent Lock-Free Reads)
-- **SET (Writes):** ~722,000 requests per second (Exclusive Write Lock with O(1) cloning)
+**Results (Pipelined):**
+- **GET (Reads):** ~2,500,000 requests per second. (Readers acquire shared locks, avoiding contention).
+- **SET (Writes):** ~722,000 requests per second. (Writers acquire an exclusive lock. Cloning the internal HAMT nodes is O(1)).
 
-This bypasses the classic single-threaded Redis bottleneck while preserving O(1) background snapshotting via software-level Copy-On-Write.
+**Internal Engine Micro-benchmarks (Criterion):**
+- `GET`: ~98 ns
+- `SET`: ~611 ns
+- `Keyspace Snapshot (10k items)`: ~19.6 ns
 
 ---
 
@@ -71,6 +78,17 @@ Radish is designed as a **development and testing tool**. It does **not** aim to
 
 ---
 
+## The Ecosystem (Windows Context)
+
+| Feature | Radish | Redis (WSL2) | Memurai | Dragonfly |
+|---------|--------|--------------|---------|-----------|
+| **OS Target** | Native Windows | Linux VM | Native Windows | Linux |
+| **License** | MIT (Open Source) | RSALv2 / SSPL | Commercial / Proprietary | BSL |
+| **Concurrency** | Multi-threaded (`RwLock`) | Single-threaded | Multi-threaded | Multi-threaded (Shared-nothing) |
+| **Startup Time** | Instant (<10ms) | VM Boot (Seconds) | Fast | Fast |
+| **Persistence** | O(1) HAMT Snapshot | `fork()` COW Snapshot | Redis-compatible | `fork()` COW Snapshot |
+| **Tooling** | Built-in CLI & GUI Studio | CLI Only | CLI Only | CLI Only |
+
 ## Architecture Overview
 
 Radish is structured as a cargo workspace containing four modular Rust crates, wrapped in a Tauri desktop shell:
@@ -87,8 +105,8 @@ radish/
 ```
 
 * **`radish-proto`**: Parses and serializes RESP structures (Simple Strings, Errors, Integers, Bulk Strings, Arrays, and Null frames).
-* **`radish-storage`**: Implements the `Keyspace` structure using structural-sharing snapshots for isolated database dumps and atomic calculations for O(1) size queries.
-* **`radish-server`**: Implements the network stack, tcp client loops, pub/sub channels, commands dispatching, and background persistence ticking.
+* **`radish-storage`**: Implements the `Keyspace` using `im::HashMap`, an immutable Hash Array Mapped Trie (HAMT). Because Windows lacks the `fork()` syscall that Redis uses for background saving, Radish utilizes software-level Copy-On-Write via this data structure. Cloning the database for a background snapshot takes `O(1)` time (a lightweight atomic reference count increment to the root node), allowing heavy disk I/O to occur in a separate background thread without blocking the main engine.
+* **`radish-server`**: Implements the TCP network stack and command dispatching. It wraps the `Keyspace` in a global `Arc<RwLock>`, allowing multiple `GET` readers to execute concurrently across CPU cores (via shared read locks), while `SET` writers acquire an exclusive lock. This trade-off prioritizes high read scalability and snapshot durability on Windows, though heavy write contention will serialize at the lock.
 * **`radish-cli`**: A standard terminal REPL interface to query Radish or any remote RESP server.
 * **Tauri Studio**: The SolidJS GUI client that communicates with the local engine process and Tauri bridge commands.
 
@@ -325,3 +343,14 @@ Directly launches the graphical Tauri user interface (Radish Studio), equivalent
   ```bash
   radish studio
   ```
+
+---
+
+## Roadmap
+
+Radish is actively developed. The current technical roadmap focuses on expanding protocol compliance and durability:
+
+- **Append-Only File (AOF) Persistence**: Adding a high-performance WAL (Write-Ahead Log) to supplement the existing HAMT snapshots for full crash durability.
+- **RESP3 Protocol Support**: Upgrading the protocol parser to support RESP3 rich data types (Maps, Sets, Booleans).
+- **ZSET (Sorted Sets)**: Implementing Redis-compatible sorted sets for leaderboards and priority queue workloads.
+- **Clustering & Replication**: Introducing basic primary-replica replication and clustering gossip protocols for horizontal scaling.
