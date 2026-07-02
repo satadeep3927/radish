@@ -2994,6 +2994,7 @@ dependencies = [
  "serde",
  "tokio",
  "toml 0.8.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -21,3 +21,4 @@ radish-cli = { path = "../radish-cli" }
 [[bench]]
 name = "engine_bench"
 harness = false
+
