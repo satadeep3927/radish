@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use tokio::sync::Notify;
