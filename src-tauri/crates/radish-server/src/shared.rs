@@ -18,7 +18,8 @@ pub struct SharedState {
     pub auth: RwLock<AuthState>,
     pub config: RadishConfig,
     pub start_time: u64,
-    pub connection_count: AtomicU64,
+    pub next_id: AtomicU64,
+    pub active_connections: AtomicU64,
     pub shutdown: Notify,
 }
 
@@ -43,7 +44,8 @@ impl SharedState {
             }),
             config,
             start_time,
-            connection_count: AtomicU64::new(1),
+            next_id: AtomicU64::new(1),
+            active_connections: AtomicU64::new(0),
             shutdown: Notify::new(),
         }
     }

@@ -2,32 +2,28 @@ pub mod connection;
 pub mod engine;
 pub mod commands;
 pub mod config;
+pub mod shared;
 
 use tokio::net::TcpListener;
-use tokio::sync::mpsc;
 use connection::Connection;
-use engine::run;
+use engine::background_worker;
 use config::RadishConfig;
+use shared::SharedState;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Starts the Radish Server
 pub async fn start(config: RadishConfig, mut cancel_rx: tokio::sync::oneshot::Receiver<()>) {
     log::info!("Radish Server booting up...");
     
-    let conn_counter = Arc::new(AtomicU64::new(1));
-
-    // 1. Create the communication channel between connections and the engine
-    let (tx, rx) = mpsc::channel(1024);
+    let dump_path = config.get_resolved_dump_path().to_string_lossy().to_string();
+    let state = Arc::new(SharedState::new(config.clone(), &dump_path));
     
-    // 1.5 Create a channel for the engine to signal the listener that it has shut down
-    let (shutdown_tx, mut shutdown_rx) = mpsc::channel(1);
-
-    // 2. Spawn the single-threaded Execution Engine task
-    let engine_config = config.clone();
+    // Spawn background worker for active sweeping and snapshots
+    let worker_state = state.clone();
     tokio::spawn(async move {
-        run(rx, engine_config, shutdown_tx).await;
+        background_worker(worker_state).await;
     });
 
     let addr = format!("{}:{}", config.bind, config.port);
@@ -40,14 +36,14 @@ pub async fn start(config: RadishConfig, mut cancel_rx: tokio::sync::oneshot::Re
     };
     log::info!("Listening on {}", addr);
 
-    // 4. Accept incoming client connections
+    // Accept incoming client connections
     loop {
         tokio::select! {
             _ = &mut cancel_rx => {
                 log::info!("Shutdown signal received via CLI, stopping listener loop...");
                 break;
             }
-            _ = shutdown_rx.recv() => {
+            _ = state.shutdown.notified() => {
                 log::info!("Engine executed SHUTDOWN command, stopping listener loop...");
                 break;
             }
@@ -57,13 +53,13 @@ pub async fn start(config: RadishConfig, mut cancel_rx: tokio::sync::oneshot::Re
                         // Disable Nagle's algorithm to drastically reduce latency for unpipelined requests
                         let _ = stream.set_nodelay(true);
                         
-                        let tx = tx.clone();
-                        let conn_id = conn_counter.fetch_add(1, Ordering::SeqCst);
+                        let state_clone = state.clone();
+                        let conn_id = state.next_id.fetch_add(1, Ordering::SeqCst);
                         
                         // Spawn a dedicated task for this TCP connection
                         tokio::spawn(async move {
                             let conn = Connection::new(conn_id, stream);
-                            conn.process(tx).await;
+                            conn.process(state_clone).await;
                         });
                     }
                     Err(e) => {

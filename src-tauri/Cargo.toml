@@ -1,6 +1,6 @@
 [package]
 name = "radish"
-version = "0.1.0"
+version = "0.2.0"
 description = "A lightweight, local-first Valkey/Redis-compatible database & visual studio."
 authors = ["Radish Contributors"]
 edition = "2021"
@@ -24,8 +24,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 bytes = "1"
-radish-proto = { version = "0.1.0", path = "crates/radish-proto" }
-radish-storage = { version = "0.1.0", path = "crates/radish-storage" }
+radish-proto = { version = "0.2.0", path = "crates/radish-proto" }
+radish-storage = { version = "0.2.0", path = "crates/radish-storage" }
 log = "0.4"
 lazy_static = "1.4"
 radish-server = { path = "crates/radish-server" }

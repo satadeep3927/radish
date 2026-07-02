@@ -1,7 +1,7 @@
 [package]
 name = "radish-storage"
-version = "0.1.0"
-edition = "2024"
+version = "0.2.0"
+edition = "2021"
 
 [dependencies]
 bytes = { version = "1.12.0", features = ["serde"] }

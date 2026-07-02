@@ -11,10 +11,24 @@
 2. [What Radish Tries to Do](#what-radish-tries-to-do)
 3. [What Radish Does NOT Try to Do](#what-radish-does-not-try-to-do)
 4. [Architecture Overview](#architecture-overview)
-5. [Configuration & File Layout](#configuration--file-layout)
-6. [Supported Valkey/Redis Commands](#supported-valkeyredis-commands)
-7. [Getting Started & Development](#getting-started--development)
-8. [Unified CLI Reference & Admin Guide](#unified-cli-reference--admin-guide)
+5. [Performance Benchmarks](#performance-benchmarks)
+6. [Configuration & File Layout](#configuration--file-layout)
+7. [Supported Valkey/Redis Commands](#supported-valkeyredis-commands)
+8. [Getting Started & Development](#getting-started--development)
+9. [Unified CLI Reference & Admin Guide](#unified-cli-reference--admin-guide)
+
+---
+
+## Performance Benchmarks
+Radish uses a multi-threaded, lockless-reader architecture (`RwLock<im::HashMap>`) that allows it to scale vertically across multiple CPU cores. 
+
+**Environment:** Windows Loopback (TCP)
+**Command:** `./redis-benchmark -h 127.0.0.1 -p 6379 -c 100 -t set,get -n 1000000 -q -P 200`
+
+- **GET (Reads):** ~2,500,000 requests per second (Concurrent Lock-Free Reads)
+- **SET (Writes):** ~722,000 requests per second (Exclusive Write Lock with O(1) cloning)
+
+This bypasses the classic single-threaded Redis bottleneck while preserving O(1) background snapshotting via software-level Copy-On-Write.
 
 ---
 
@@ -107,8 +121,8 @@ maxmemory = "0"
 
 Radish implements a comprehensive developer command subset:
 
-* **Generic**: `PING`, `ECHO`, `SELECT`, `AUTH`, `SHUTDOWN`, `KEYS`, `SCAN`, `FLUSHDB`, `FLUSHALL`, `DEL`, `EXISTS`, `RENAME`, `TYPE`
-* **Strings**: `GET`, `SET`, `SETEX`, `MGET`, `MSET`, `INCR`, `DECR`, `EXPIRE`, `TTL`
+* **Generic**: `PING`, `ECHO`, `SELECT`, `AUTH`, `SHUTDOWN`, `KEYS`, `SCAN`, `FLUSHDB`, `FLUSHALL`, `DEL`, `EXISTS`, `RENAME`, `TYPE`, `EXPIRE`, `TTL`, `PEXPIRE`, `PTTL`, `EXPIREAT`, `PEXPIREAT`, `PERSIST`, `OBJECT ENCODING`
+* **Strings**: `GET`, `SET` (supports `EX/PX/NX/XX`), `SETEX`, `SETNX`, `GETSET`, `MGET`, `MSET`, `INCR`, `DECR`, `GETRANGE`
 * **Lists**: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LRANGE`
 * **Hashes**: `HSET`, `HGET`, `HDEL`, `HEXISTS`, `HKEYS`, `HVALS`, `HGETALL`
 * **Pub/Sub**: `PUBLISH`, `SUBSCRIBE`, `UNSUBSCRIBE`, `PSUBSCRIBE`, `PUNSUBSCRIBE`
