@@ -2,6 +2,8 @@
 
 <p align="center">
   <strong>A native, zero-overhead development database, admin tool, CLI client, and visual studio for local Valkey & Redis workflows—all packed into a single binary.</strong>
+  <br><br>
+  <img src="docs/Mockup.gif" alt="Mockup">
 </p>
 
 ---
