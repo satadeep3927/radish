@@ -17,9 +17,9 @@ pub fn handle(cmd: &str, frames: &[Frame]) -> Frame {
         "HELLO" => {
             let mut res = Vec::new();
             res.push(Frame::Bulk(Bytes::from("server")));
-            res.push(Frame::Bulk(Bytes::from("redis"))); // Spoof redis so strict clients don't panic
+            res.push(Frame::Bulk(Bytes::from("radish")));
             res.push(Frame::Bulk(Bytes::from("version")));
-            res.push(Frame::Bulk(Bytes::from("6.2.0")));
+            res.push(Frame::Bulk(Bytes::from(env!("CARGO_PKG_VERSION"))));
             res.push(Frame::Bulk(Bytes::from("proto")));
             res.push(Frame::Integer(2));
             res.push(Frame::Bulk(Bytes::from("id")));
